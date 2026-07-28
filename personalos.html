@@ -525,6 +525,8 @@ img{max-width:100%;display:block}
 }
 .life-submit:hover{opacity:0.9}
 .life-submit:active{transform:scale(0.97)}
+#lfExerciseList label:has(input:checked){background:var(--accent-green-light);color:var(--accent-green-dark)}
+#lfExerciseList input[type="checkbox"]{accent-color:var(--accent-green)}
 .chart-tabs{display:flex;gap:6px;margin-bottom:12px}
 .chart-tab{
   padding:6px 14px;
@@ -705,8 +707,8 @@ img{max-width:100%;display:block}
 .color-dot:hover{transform:scale(1.1)}
 
 /* ========== Edit Task Modal ========== */
-.edit-modal-overlay{display:none}
-.edit-modal-overlay.show{display:flex}
+/* iOS touch optimization */
+button,.nav-item,.sidebar-item,.fab,.todo-check,.todo-del,.card-badge,.stat-card,.chart-tab,.edit-task-btn,.ia-btn,.pr-del{touch-action:manipulation}
 
 /* ========== Responsive ========== */
 @media(min-width:768px){
@@ -808,7 +810,20 @@ img{max-width:100%;display:block}
           </div>
           <div class="lf-group full">
             <label>锻炼项目</label>
-            <textarea id="lfExercise" placeholder="例如：跑步30分钟、瑜伽20分钟"></textarea>
+            <div class="period-checkboxes" id="lfExerciseList">
+              <label><input type="checkbox" class="exercise-checkbox" value="跑步"> 跑步</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="快走"> 快走</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="瑜伽"> 瑜伽</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="游泳"> 游泳</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="骑行"> 骑行</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="跳绳"> 跳绳</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="HIIT"> HIIT</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="力量训练"> 力量训练</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="拉伸"> 拉伸</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="羽毛球"> 羽毛球</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="篮球"> 篮球</label>
+              <label><input type="checkbox" class="exercise-checkbox" value="舞蹈"> 舞蹈</label>
+            </div>
           </div>
           <button type="submit" class="life-submit">保存数据</button>
         </form>
@@ -816,6 +831,13 @@ img{max-width:100%;display:block}
 
       <div class="card" id="recommendationCard" style="display:none">
         <div class="recommendation" id="recommendationContent"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><span class="ct-icon">📋</span>历史记录</span>
+        </div>
+        <div class="period-history" id="lifeHistory"></div>
       </div>
 
       <div class="card">
@@ -859,6 +881,13 @@ img{max-width:100%;display:block}
       </div>
 
       <div class="card">
+        <div class="card-header">
+          <span class="card-title"><span class="ct-icon">📝</span>历史记录</span>
+        </div>
+        <div class="period-history" id="moodHistory"></div>
+      </div>
+
+      <div class="card">
         <div class="mood-tips" id="moodTips">
           <div class="mt-title">💡 情绪调节小妙招</div>
           <div id="moodTipsContent"></div>
@@ -887,9 +916,17 @@ img{max-width:100%;display:block}
               <label><input type="checkbox" id="pfDiarrhea"> 拉肚子</label>
             </div>
           </div>
-          <div class="pf-group full">
-            <label>血量</label>
-            <select id="pfFlow">
+          <div class="pf-group">
+            <label>前期血量</label>
+            <select id="pfFlowEarly">
+              <option value="少量">少量</option>
+              <option value="中等" selected>中等</option>
+              <option value="大量">大量</option>
+            </select>
+          </div>
+          <div class="pf-group">
+            <label>后期血量</label>
+            <select id="pfFlowLate">
               <option value="少量">少量</option>
               <option value="中等" selected>中等</option>
               <option value="大量">大量</option>
@@ -968,7 +1005,7 @@ img{max-width:100%;display:block}
 </div>
 
 <!-- ===== Edit Task Modal ===== -->
-<div class="modal-overlay edit-modal-overlay" id="editTaskModal" onclick="if(event.target===this)closeEditTask()">
+<div class="modal-overlay" id="editTaskModal" style="display:none" onclick="if(event.target===this)closeEditTask()">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title">✏️ 编辑任务</div>
@@ -1007,6 +1044,9 @@ dailyTodos = dailyTodos.filter(t=>t.date===TODAY);
 
 let currentSection = 'dashboard';
 let editTaskId = null;
+let editingMoodDate = null;
+let currentEditDate = TODAY;
+let editPeriodId = null;
 let stepsChart=null,caloriesChart=null,moodChart=null;
 
 // ==================== HELPERS ====================
@@ -1031,6 +1071,8 @@ renderPeriodHistory();
 updateMoodDisplay();
 loadLifeForm();
 refreshMoodTips();
+renderMoodHistory();
+renderLifeHistory();
 initChartTabs();
 
 // ==================== SIDEBAR ====================
@@ -1051,7 +1093,6 @@ function getSectionEmoji(s){
 document.getElementById('sidebarAddBtn').onclick=()=>{
   document.getElementById('addSidebarModal').style.display='flex';
   document.getElementById('newSidebarName').value='';
-  document.getElementById('newSidebarName').focus();
 };
 function closeAddSidebar(){document.getElementById('addSidebarModal').style.display='none'}
 function addSidebarItem(){
@@ -1301,9 +1342,9 @@ function openEditTask(id){
   editTaskId=id;
   const t=tasks.find(t=>t.id===id);
   document.getElementById('editTaskInput').value=t?t.title:'';
-  document.getElementById('editTaskModal').classList.add('show');
+  document.getElementById('editTaskModal').style.display='flex';
 }
-function closeEditTask(){document.getElementById('editTaskModal').classList.remove('show');editTaskId=null}
+function closeEditTask(){document.getElementById('editTaskModal').style.display='none';editTaskId=null}
 function saveEditTask(){
   const val=document.getElementById('editTaskInput').value.trim();
   if(!val)return;
@@ -1321,27 +1362,72 @@ function deleteEditTask(){
 }
 
 // ==================== LIFE ====================
-function loadLifeForm(){
-  const d=lifeData[TODAY];
+function loadLifeForm(date){
+  const targetDate=date||TODAY;
+  currentEditDate=targetDate;
+  const d=lifeData[targetDate];
   if(d){
     document.getElementById('lfWeight').value=d.weight||'';
     document.getElementById('lfSteps').value=d.steps||'';
     document.getElementById('lfCalories').value=d.calories||'';
-    document.getElementById('lfExercise').value=d.exercise||'';
+    // Uncheck all exercise checkboxes first
+    document.querySelectorAll('.exercise-checkbox').forEach(cb=>cb.checked=false);
+    if(d.exercise){
+      const items=d.exercise.split(',').map(s=>s.trim());
+      items.forEach(item=>{
+        const cb=document.querySelector(`.exercise-checkbox[value="${item}"]`);
+        if(cb)cb.checked=true;
+      });
+    }
+  }else{
+    document.getElementById('lfWeight').value='';
+    document.getElementById('lfSteps').value='';
+    document.getElementById('lfCalories').value='';
+    document.querySelectorAll('.exercise-checkbox').forEach(cb=>cb.checked=false);
   }
 }
 function saveLifeData(e){
   e.preventDefault();
-  lifeData[TODAY]={
+  const exercises=Array.from(document.querySelectorAll('.exercise-checkbox:checked')).map(cb=>cb.value);
+  lifeData[currentEditDate]={
     weight:parseFloat(document.getElementById('lfWeight').value)||0,
     steps:parseInt(document.getElementById('lfSteps').value)||0,
     calories:parseInt(document.getElementById('lfCalories').value)||0,
-    exercise:document.getElementById('lfExercise').value.trim()
+    exercise:exercises.join(',')
   };
   save('pOS_lifeData',lifeData);
   renderLifeCharts(document.querySelector('#lifeChartTabs .chart-tab.active')?.dataset?.period||'week');
   updateRecommendation();
+  renderLifeHistory();
   toast('健康数据已保存');
+}
+
+function editLifeData(date){
+  loadLifeForm(date);
+  document.querySelector('.life-submit').textContent='更新数据';
+  toast('已加载 '+date+' 的数据');
+}
+
+function renderLifeHistory(){
+  const container=document.getElementById('lifeHistory');
+  const dates=Object.keys(lifeData).sort().reverse();
+  if(dates.length===0){
+    container.innerHTML='<div class="period-empty">暂无生活数据</div>';
+    return;
+  }
+  container.innerHTML=dates.map(d=>{
+    const data=lifeData[d];
+    const exerciseText=data.exercise?data.exercise:'未记录';
+    return `<div class="period-record" style="border-left-color:var(--accent-green);background:var(--accent-green-light);cursor:pointer" onclick="editLifeData('${d}')">
+      <div class="pr-dates">🏃 ${d}</div>
+      <div class="pr-details">
+        <span class="pr-tag">体重:${data.weight}kg</span>
+        <span class="pr-tag">步数:${data.steps}</span>
+        <span class="pr-tag">卡路里:${data.calories}</span>
+        <span class="pr-tag">锻炼:${escapeHtml(exerciseText)}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function getDataForPeriod(period){
@@ -1436,11 +1522,54 @@ function updateMoodDisplay(){
 function saveMood(){
   const v=parseInt(document.getElementById('moodSlider').value);
   const note=document.getElementById('moodNote').value.trim();
-  moodData[TODAY]={mood:v,label:moodLabels[v],note};
+  const date=editingMoodDate||TODAY;
+  moodData[date]={mood:v,label:moodLabels[v],note};
   save('pOS_moodData',moodData);
   renderMoodChart(document.querySelector('#moodChartTabs .chart-tab.active')?.dataset?.period||'week');
   refreshMoodTips();
+  renderMoodHistory();
+  editingMoodDate=null;
+  document.querySelector('.mood-submit').textContent='记录情绪';
   toast('情绪已记录 💜');
+}
+
+function editMood(date){
+  const d=moodData[date];
+  if(!d)return;
+  editingMoodDate=date;
+  document.getElementById('moodSlider').value=d.mood;
+  document.getElementById('moodNote').value=d.note||'';
+  updateMoodDisplay();
+  document.querySelector('.mood-submit').textContent='更新情绪';
+  toast('已加载 '+date+' 的情绪记录');
+}
+
+function renderMoodHistory(){
+  const container=document.getElementById('moodHistory');
+  const dates=Object.keys(moodData).sort().reverse();
+  if(dates.length===0){
+    container.innerHTML='<div class="period-empty">暂无情绪记录</div>';
+    return;
+  }
+  container.innerHTML=dates.map(d=>{
+    const m=moodData[d];
+    const emoji=m.label?m.label.split(' ')[0]:'😐';
+    const labelText=m.label?m.label.split(' ').slice(1).join(' '):'';
+    return `<div class="period-record" style="border-left-color:var(--accent-pink);background:var(--accent-pink-light)">
+      <span class="pr-del" onclick="deleteMood('${d}')">×</span>
+      <div class="pr-dates" onclick="editMood('${d}')" style="cursor:pointer">${emoji} ${d} - ${labelText} (${m.mood}/10)</div>
+      ${m.note?`<div class="pr-details"><span class="pr-tag">${escapeHtml(m.note)}</span></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function deleteMood(date){
+  if(!confirm('确定删除此情绪记录？'))return;
+  delete moodData[date];
+  save('pOS_moodData',moodData);
+  renderMoodHistory();
+  renderMoodChart(document.querySelector('#moodChartTabs .chart-tab.active')?.dataset?.period||'week');
+  toast('记录已删除');
 }
 
 function getMoodDataForPeriod(period){
@@ -1507,20 +1636,44 @@ function refreshMoodTips(){
 // ==================== PERIOD ====================
 function savePeriod(e){
   e.preventDefault();
-  periodData.push({
-    id:uuid(),
+  const record={
     startDate:document.getElementById('pfStart').value,
     endDate:document.getElementById('pfEnd').value,
     pain:document.getElementById('pfPain').checked,
     vomit:document.getElementById('pfVomit').checked,
     diarrhea:document.getElementById('pfDiarrhea').checked,
-    flow:document.getElementById('pfFlow').value
-  });
+    flowEarly:document.getElementById('pfFlowEarly').value,
+    flowLate:document.getElementById('pfFlowLate').value
+  };
+  if(editPeriodId){
+    const idx=periodData.findIndex(p=>p.id===editPeriodId);
+    if(idx>=0){record.id=editPeriodId;periodData[idx]=record}
+    editPeriodId=null;
+    document.querySelector('.period-submit').textContent='保存记录';
+  }else{
+    record.id=uuid();
+    periodData.push(record);
+  }
   periodData.sort((a,b)=>b.startDate.localeCompare(a.startDate));
   save('pOS_periodData',periodData);
   renderPeriodHistory();
   document.getElementById('periodForm').reset();
   toast('经期记录已保存');
+}
+
+function editPeriod(id){
+  const p=periodData.find(p=>p.id===id);
+  if(!p)return;
+  editPeriodId=id;
+  document.getElementById('pfStart').value=p.startDate||'';
+  document.getElementById('pfEnd').value=p.endDate||'';
+  document.getElementById('pfPain').checked=p.pain||false;
+  document.getElementById('pfVomit').checked=p.vomit||false;
+  document.getElementById('pfDiarrhea').checked=p.diarrhea||false;
+  document.getElementById('pfFlowEarly').value=p.flowEarly||'中等';
+  document.getElementById('pfFlowLate').value=p.flowLate||'中等';
+  document.querySelector('.period-submit').textContent='更新记录';
+  toast('已加载经期记录，可编辑后保存');
 }
 
 function renderPeriodHistory(){
@@ -1534,10 +1687,15 @@ function renderPeriodHistory(){
     if(p.pain)tags.push('疼痛');
     if(p.vomit)tags.push('呕吐');
     if(p.diarrhea)tags.push('拉肚子');
-    tags.push(`血量:${p.flow}`);
+    if(p.flowEarly||p.flowLate){
+      tags.push(`前期:${p.flowEarly||'-'}`);
+      tags.push(`后期:${p.flowLate||'-'}`);
+    }
+    if(p.flow)tags.push(`血量:${p.flow}`);
     const duration=Math.ceil((new Date(p.endDate)-new Date(p.startDate))/(86400000))+1;
     return `<div class="period-record">
       <span class="pr-del" onclick="deletePeriod('${p.id}')">×</span>
+      <button class="edit-task-btn" style="float:right;color:var(--accent-coral);margin-right:8px" onclick="editPeriod('${p.id}')">编辑</button>
       <div class="pr-dates">📅 ${p.startDate} ~ ${p.endDate} (${duration}天)</div>
       <div class="pr-details">${tags.map(t=>`<span class="pr-tag">${t}</span>`).join('')}</div>
     </div>`;
